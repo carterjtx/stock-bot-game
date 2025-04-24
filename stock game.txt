@@ -1,0 +1,239 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Investment Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+    <div class="container mx-auto p-4 max-w-3xl">
+        <h1 class="text-3xl font-bold text-center mb-4">Stock Investment Game</h1>
+        <p class="text-center mb-4">Compete against a bot to have the most money in 2 minutes!</p>
+
+        <!-- Difficulty Selection -->
+        <div class="mb-4">
+            <label for="difficulty" class="block text-lg font-medium">Bot Difficulty:</label>
+            <select id="difficulty" class="mt-1 p-2 border rounded">
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+            </select>
+            <button id="startGame" class="ml-4 bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Start Game</button>
+        </div>
+
+        <!-- Game Area -->
+        <div id="gameArea" class="hidden">
+            <div class="flex justify-between mb-4">
+                <div>
+                    <p><strong>Your Cash:</strong> $<span id="playerCash">10000</span></p>
+                    <p><strong>Your Portfolio Value:</strong> $<span id="playerPortfolio">0</span></p>
+                    <p><strong>Your Total:</strong> $<span id="playerTotal">10000</span></p>
+                </div>
+                <div>
+                    <p><strong>Bot Cash:</strong> $<span id="botCash">10000</span></p>
+                    <p><strong>Bot Portfolio Value:</strong> $<span id="botPortfolio">0</span></p>
+                    <p><strong>Bot Total:</strong> $<span id="botTotal">10000</span></p>
+                </div>
+            </div>
+
+            <div class="text-center mb-4">
+                <p class="text-lg">Time Remaining: <span id="timer">2:00</span></p>
+                <button id="stopGame" class="mt-2 bg-red-500 text-white p-2 rounded hover:bg-red-600">Stop Game</button>
+            </div>
+
+            <!-- Stock Market -->
+            <div class="mt-4">
+                <h2 class="text-xl font-semibold">Stock Market</h2>
+                <div id="stocks" class="grid grid-cols-1 gap-4 mt-2"></div>
+            </div>
+
+            <!-- Result -->
+            <div id="result" class="mt-4 text-center text-xl font-bold hidden"></div>
+        </div>
+    </div>
+
+    <script>
+        let player = { cash: 10000, stocks: {} };
+        let bot = { cash: 10000, stocks: {} };
+        let stocks = [
+            { name: "TechCorp", price: 100, volatility: 0.1 },
+            { name: "HealthInc", price: 80, volatility: 0.05 },
+            { name: "EnergyCo", price: 120, volatility: 0.15 },
+            { name: "FinanceLtd", price: 90, volatility: 0.08 },
+            { name: "RetailGroup", price: 110, volatility: 0.12 }
+        ];
+        let gameRunning = false;
+        let timeLeft = 120; // 2 minutes in seconds
+        let difficulty = "easy";
+        let timerInterval;
+
+        // Start game
+        document.getElementById("startGame").addEventListener("click", () => {
+            difficulty = document.getElementById("difficulty").value;
+            document.getElementById("gameArea").classList.remove("hidden");
+            document.getElementById("startGame").disabled = true;
+            gameRunning = true;
+            resetGame();
+            updateStockMarket();
+            startTimer();
+            botInvest();
+        });
+
+        // Stop game
+        document.getElementById("stopGame").addEventListener("click", () => {
+            if (gameRunning) {
+                endGame();
+            }
+        });
+
+        // Reset game state
+        function resetGame() {
+            player = { cash: 10000, stocks: {} };
+            bot = { cash: 10000, stocks: {} };
+            timeLeft = 120;
+            stocks.forEach(stock => stock.price = Math.round(Math.random() * 100 + 50));
+            updateUI();
+        }
+
+        // Update stock prices
+        function updateStockPrices() {
+            stocks.forEach(stock => {
+                const change = stock.price * stock.volatility * (Math.random() - 0.5);
+                stock.price = Math.max(10, stock.price + change);
+                stock.price = Math.round(stock.price * 100) / 100;
+            });
+            updateStockMarket();
+        }
+
+        // Update stock market UI
+        function updateStockMarket() {
+            const stockDiv = document.getElementById("stocks");
+            stockDiv.innerHTML = "";
+            stocks.forEach(stock => {
+                const owns = player.stocks[stock.name] || 0;
+                stockDiv.innerHTML += `
+                    <div class="border p-4 rounded bg-white">
+                        <p><strong>${stock.name}</strong>: $${stock.price.toFixed(2)}</p>
+                        <p>You own: ${owns}</p>
+                        <button onclick="buyStock('${stock.name}')" class="bg-green-500 text-white p-1 rounded ml-2">Buy 1</button>
+                        <button onclick="sellStock('${stock.name}')" class="bg-red-500 text-white p-1 rounded ml-2">Sell 1</button>
+                    </div>
+                `;
+            });
+        }
+
+        // Buy stock
+        window.buyStock = function(name) {
+            if (!gameRunning) return;
+            const stock = stocks.find(s => s.name === name);
+            const qty = 1;
+            if (player.cash >= stock.price * qty) {
+                player.cash -= stock.price * qty;
+                player.stocks[name] = (player.stocks[name] || 0) + qty;
+                updateUI();
+            }
+        };
+
+        // Sell stock
+        window.sellStock = function(name) {
+            if (!gameRunning) return;
+            const stock = stocks.find(s => s.name === name);
+            const qty = 1;
+            if ((player.stocks[name] || 0) >= qty) {
+                player.cash += stock.price * qty;
+                player.stocks[name] -= qty;
+                if (player.stocks[name] === 0) delete player.stocks[name];
+                updateUI();
+            }
+        };
+
+        // Bot investment logic
+        function botInvest() {
+            if (!gameRunning) return;
+            const cashThreshold = difficulty === "easy" ? 8000 : difficulty === "medium" ? 5000 : 2000;
+            const aggressiveness = difficulty === "easy" ? 0.3 : difficulty === "medium" ? 0.6 : 0.9;
+            if (bot.cash > cashThreshold && Math.random() < aggressiveness) {
+                const stock = stocks[Math.floor(Math.random() * stocks.length)];
+                const qty = Math.floor((bot.cash * 0.2) / stock.price);
+                if (qty > 0 && bot.cash >= stock.price * qty) {
+                    bot.cash -= stock.price * qty;
+                    bot.stocks[stock.name] = (bot.stocks[stock.name] || 0) + qty;
+                }
+            } else if (Math.random() < 0.2) {
+                const stockNames = Object.keys(bot.stocks);
+                if (stockNames.length > 0) {
+                    const name = stockNames[Math.floor(Math.random() * stockNames.length)];
+                    const stock = stocks.find(s => s.name === name);
+                    const qty = Math.floor(bot.stocks[name] * 0.5);
+                    if (qty > 0) {
+                        bot.cash += stock.price * qty;
+                        bot.stocks[name] -= qty;
+                        if (bot.stocks[name] === 0) delete bot.stocks[name];
+                    }
+                }
+            }
+            updateUI();
+            if (gameRunning) setTimeout(botInvest, 5000);
+        }
+
+        // Update UI
+        function updateUI() {
+            const playerPortfolio = calculatePortfolioValue(player);
+            const botPortfolio = calculatePortfolioValue(bot);
+            document.getElementById("playerCash").textContent = player.cash.toFixed(2);
+            document.getElementById("playerPortfolio").textContent = playerPortfolio.toFixed(2);
+            document.getElementById("playerTotal").textContent = (player.cash + playerPortfolio).toFixed(2);
+            document.getElementById("botCash").textContent = bot.cash.toFixed(2);
+            document.getElementById("botPortfolio").textContent = botPortfolio.toFixed(2);
+            document.getElementById("botTotal").textContent = (bot.cash + botPortfolio).toFixed(2);
+        }
+
+        // Calculate portfolio value
+        function calculatePortfolioValue(entity) {
+            let value = 0;
+            for (const [name, qty] of Object.entries(entity.stocks)) {
+                const stock = stocks.find(s => s.name === name);
+                value += stock.price * qty;
+            }
+            return value;
+        }
+
+        // Timer
+        function startTimer() {
+            timerInterval = setInterval(() => {
+                if (!gameRunning) return;
+                timeLeft--;
+                const minutes = Math.floor(timeLeft / 60);
+                const seconds = timeLeft % 60;
+                document.getElementById("timer").textContent = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+                updateStockPrices();
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+        }
+
+        // End game
+        function endGame() {
+            gameRunning = false;
+            clearInterval(timerInterval);
+            const playerTotal = player.cash + calculatePortfolioValue(player);
+            const botTotal = bot.cash + calculatePortfolioValue(bot);
+            const result = document.getElementById("result");
+            result.classList.remove("hidden");
+            if (playerTotal > botTotal) {
+                result.textContent = "You Win!";
+                result.classList.add("text-green-500");
+            } else if (botTotal > playerTotal) {
+                result.textContent = "Bot Wins!";
+                result.classList.add("text-red-500");
+            } else {
+                result.textContent = "It's a Tie!";
+            }
+            document.getElementById("startGame").disabled = false;
+        }
+    </script>
+</body>
+</html>
